@@ -1432,6 +1432,28 @@ button, .btn-primary, .btn-secondary, .btn-glow, .btn-success {
   text-shadow: 0 0 8px var(--accent-pink-glow);
 }
 
+/* Chor Police Card Preview Text Mock */
+.neon-cdbp-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.neon-cdbp-preview .glow-pink {
+  color: var(--accent-pink);
+  text-shadow: 0 0 10px var(--accent-pink-glow);
+}
+
+.neon-cdbp-preview .glow-cyan {
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+
 /* Locked Card State */
 .game-card.locked {
   opacity: 0.6;
