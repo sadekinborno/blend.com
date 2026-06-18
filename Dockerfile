@@ -1,5 +1,5 @@
-# Use Node.js base image
-FROM node:20-bullseye-slim
+# Use Node.js 22 base image (has native WebSocket support for Supabase client)
+FROM node:22-bullseye-slim
 
 # Install Python 3 and ffmpeg (needed by yt-dlp)
 RUN apt-get update && apt-get install -y \
@@ -15,9 +15,9 @@ RUN pip3 install --no-cache-dir yt-dlp
 # Set working directory
 WORKDIR /app
 
-# Copy package files and install production dependencies
+# Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy codebase
 COPY . .
