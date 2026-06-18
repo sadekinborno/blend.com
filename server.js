@@ -385,7 +385,7 @@ app.put('/api/links/:id', async (req, res) => {
 });
 
 // REST API: Guest Auth Signup
-app.post('/api/auth/signup', (req, res) => {
+app.post('/api/auth/signup', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -399,16 +399,30 @@ app.post('/api/auth/signup', (req, res) => {
   }
 
   try {
-    const usersData = fs.readFileSync(USERS_FILE, 'utf8');
-    const users = JSON.parse(usersData || '[]');
+    // Check if user exists in Supabase (case-insensitive)
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('username')
+      .ilike('username', cleanUsername);
 
-    const exists = users.some(u => u.username.toLowerCase() === cleanUsername.toLowerCase());
-    if (exists) {
+    if (checkError) {
+      console.error('Signup Check Error:', checkError.message);
+      return res.status(500).json({ error: 'Database error during signup' });
+    }
+
+    if (existingUser && existingUser.length > 0) {
       return res.status(400).json({ error: 'Username already exists' });
     }
 
-    users.push({ username: cleanUsername, password: cleanPassword });
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    // Insert new user
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert([{ username: cleanUsername, password: cleanPassword }]);
+
+    if (insertError) {
+      console.error('Signup Insert Error:', insertError.message);
+      return res.status(500).json({ error: 'Could not register user' });
+    }
 
     res.status(201).json({ message: 'User registered successfully', username: cleanUsername });
   } catch (err) {
@@ -418,7 +432,7 @@ app.post('/api/auth/signup', (req, res) => {
 });
 
 // REST API: Guest Auth Login
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -428,15 +442,22 @@ app.post('/api/auth/login', (req, res) => {
   const cleanPassword = password.trim();
 
   try {
-    const usersData = fs.readFileSync(USERS_FILE, 'utf8');
-    const users = JSON.parse(usersData || '[]');
+    const { data, error } = await supabase
+      .from('users')
+      .select('username, password')
+      .ilike('username', cleanUsername)
+      .eq('password', cleanPassword);
 
-    const user = users.find(u => u.username.toLowerCase() === cleanUsername.toLowerCase() && u.password === cleanPassword);
-    if (!user) {
+    if (error) {
+      console.error('Login Query Error:', error.message);
+      return res.status(500).json({ error: 'Database error during login' });
+    }
+
+    if (!data || data.length === 0) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
-    res.json({ success: true, username: user.username });
+    res.json({ success: true, username: data[0].username });
   } catch (err) {
     console.error('Login Error:', err);
     res.status(500).json({ error: 'Internal server error during login' });
