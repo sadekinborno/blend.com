@@ -224,7 +224,7 @@ app.post('/api/links', async (req, res) => {
     
     let favicon = inputFavicon;
     if (!favicon || favicon === 'auto') {
-      favicon = `https://icons.duckduckgo.com/ip3/${domain || 'google.com'}.ico`;
+      favicon = `https://www.google.com/s2/favicons?sz=64&domain=${domain || 'google.com'}`;
     }
 
     // If no custom title is provided, scrape it from the webpage
@@ -303,7 +303,7 @@ app.put('/api/links/:id', async (req, res) => {
     
     let favicon = inputFavicon;
     if (!favicon || favicon === 'auto') {
-      favicon = `https://icons.duckduckgo.com/ip3/${domain || 'google.com'}.ico`;
+      favicon = `https://www.google.com/s2/favicons?sz=64&domain=${domain || 'google.com'}`;
     }
 
     if (!title) {

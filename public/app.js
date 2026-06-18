@@ -707,13 +707,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return `<div class="bookmark-favicon ${iconClass}"><i data-lucide="${iconName}"></i></div>`;
     }
 
-    // Standard URL favicon - Dynamically upgrade old Google s2 URLs to DuckDuckGo
+    // Standard URL favicon - Dynamically restore legacy Google s2 URL format for reliability
     let faviconUrl = favicon;
-    if (faviconUrl.includes('google.com/s2/favicons')) {
+    if (faviconUrl.includes('icons.duckduckgo.com/ip3/')) {
       try {
-        const urlObj = new URL(faviconUrl);
-        const domainParam = urlObj.searchParams.get('domain') || 'google.com';
-        faviconUrl = `https://icons.duckduckgo.com/ip3/${domainParam}.ico`;
+        const parts = faviconUrl.split('/');
+        const filePart = parts[parts.length - 1];
+        const domainParam = filePart.replace('.ico', '');
+        faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${domainParam}`;
       } catch (e) {}
     }
 
@@ -721,7 +722,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const fallbackBg = getMonogramGradient(fallbackLetter);
     return `
       <div class="bookmark-favicon">
-        <img src="${faviconUrl}" onerror="this.onerror=null; this.style.display='none'; this.parentNode.querySelector('.monogram-avatar').style.display='flex';" alt="">
+        <img src="${faviconUrl}" 
+             onload="if (this.naturalWidth <= 16 && this.naturalHeight <= 16) { this.style.display='none'; this.parentNode.querySelector('.monogram-avatar').style.display='flex'; }"
+             onerror="this.onerror=null; this.style.display='none'; this.parentNode.querySelector('.monogram-avatar').style.display='flex';" 
+             alt="">
         <div class="monogram-avatar" style="display:none; width: 100%; height: 100%; align-items: center; justify-content: center; background: ${fallbackBg};">${fallbackLetter}</div>
       </div>
     `;
