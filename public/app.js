@@ -443,7 +443,8 @@ document.addEventListener('DOMContentLoaded', () => {
       btnFetchInfo.disabled = false;
 
       if (data.error) {
-        await showModalAlert(data.error, 'Error Fetching Media Info', 'error');
+        const message = data.details ? `${data.error}\n\nDetails:\n${data.details}` : data.error;
+        await showModalAlert(message, 'Error Fetching Media Info', 'error');
         return;
       }
 
