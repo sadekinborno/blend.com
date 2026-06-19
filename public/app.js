@@ -336,9 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Initialize Mode on page load
-  const initialMode = localStorage.getItem('nexus_mode') || 'guest';
-  setAppMode(initialMode);
+
 
   // Toggle Mode Click Listener
   if (modeSwitcherFooter) {
