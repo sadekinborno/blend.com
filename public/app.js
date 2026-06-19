@@ -1505,7 +1505,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const cdbpLabelSpy = document.getElementById('cdbp-label-spy');
   const cdbpLabelDetective = document.getElementById('cdbp-label-detective');
   const cdbpLabelJadukar = document.getElementById('cdbp-label-jadukar');
-  const btnCdbpRolesInfo = document.getElementById('btn-cdbp-roles-info');
 
   // Active HUD elements
   const cdbpHudPhase = document.getElementById('cdbp-hud-phase');
