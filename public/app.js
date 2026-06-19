@@ -785,6 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Render bookmarks grouped by category/genre
   function renderBookmarks() {
+    const isOwner = document.body.classList.contains('mode-owner');
     let filtered = savedLinks;
 
     // Filter by tab category
@@ -1133,6 +1134,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!confirmed) return;
 
     try {
+      const isOwner = document.body.classList.contains('mode-owner');
       const currentUser = isOwner ? 'Owner' : (guestUser || 'Guest');
       const response = await fetch(`/api/links/${id}`, { 
         method: 'DELETE',
@@ -1490,6 +1492,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Extra Roles elements
   const cdbpExtraRolesPanel = document.getElementById('cdbp-extra-roles-panel');
+  const btnCdbpRolesInfo = document.getElementById('btn-cdbp-roles-info');
   const cdbpExtraRolesNeededCount = document.getElementById('cdbp-extra-roles-needed-count');
   const cdbpRoleSpy = document.getElementById('cdbp-role-spy');
   const cdbpRoleDetective = document.getElementById('cdbp-role-detective');
