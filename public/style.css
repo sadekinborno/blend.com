@@ -1490,7 +1490,7 @@ button, .btn-primary, .btn-secondary, .btn-glow, .btn-success {
 }
 
 /* Neon buttons */
-.btn-neon-cyan, .btn-neon-purple, .btn-neon-pink {
+.btn-neon-cyan, .btn-neon-purple, .btn-neon-pink, .btn-neon-orange {
   width: 100%;
   border: 1px solid;
   padding: 10px 18px;
