@@ -2221,5 +2221,530 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+
+  // ==========================================================================
+  // Game Zone Logic: Who's the Worst? (WTW)
+  // ==========================================================================
+
+  const wtwGameView       = document.getElementById('game-wtw-view');
+  const btnWtwBack        = document.getElementById('btn-wtw-back-to-arcade');
+
+  // Screens
+  const wtwLobbySetup     = document.getElementById('wtw-lobby-setup');
+  const wtwLobbyWaiting   = document.getElementById('wtw-lobby-waiting');
+  const wtwQuestionPhase  = document.getElementById('wtw-question-phase');
+  const wtwVotingPhase    = document.getElementById('wtw-voting-phase');
+  const wtwQuestionResults= document.getElementById('wtw-question-results');
+  const wtwFinalScores    = document.getElementById('wtw-final-scores');
+  const wtwAllScreens     = [wtwLobbySetup, wtwLobbyWaiting, wtwQuestionPhase, wtwVotingPhase, wtwQuestionResults, wtwFinalScores];
+
+  // Lobby setup inputs
+  const wtwNameCreate     = document.getElementById('wtw-name-create');
+  const wtwNameJoin       = document.getElementById('wtw-name-join');
+  const wtwRoomCodeInput  = document.getElementById('wtw-room-code-input');
+  const btnWtwCreateRoom  = document.getElementById('btn-wtw-create-room');
+  const btnWtwJoinRoom    = document.getElementById('btn-wtw-join-room');
+
+  // Waiting room
+  const wtwDisplayCode      = document.getElementById('wtw-display-code');
+  const wtwPlayerCount      = document.getElementById('wtw-player-count');
+  const wtwLobbyPlayersList = document.getElementById('wtw-lobby-players-list');
+  const btnWtwCopyCode      = document.getElementById('btn-wtw-copy-code');
+  const wtwHostWarning      = document.getElementById('wtw-host-warning');
+  const wtwSettingsControls = document.getElementById('wtw-settings-controls');
+  const wtwSettingsReadonly = document.getElementById('wtw-settings-readonly');
+  const btnWtwStartGame     = document.getElementById('btn-wtw-start-game');
+  const wtwWaitingForHost   = document.getElementById('wtw-waiting-for-host-msg');
+
+  // Question phase
+  const wtwQTimer           = document.getElementById('wtw-q-timer');
+  const wtwQInputsContainer = document.getElementById('wtw-question-inputs-container');
+  const wtwQSubmittedCount  = document.getElementById('wtw-q-submitted-count');
+  const btnWtwSubmitQs      = document.getElementById('btn-wtw-submit-questions');
+  const wtwQPlayersStatus   = document.getElementById('wtw-q-players-status');
+
+  // Voting phase
+  const wtwVTimer           = document.getElementById('wtw-v-timer');
+  const wtwVoteQProgress    = document.getElementById('wtw-vote-q-progress');
+  const wtwQuestionNumber   = document.getElementById('wtw-question-number');
+  const wtwQuestionText     = document.getElementById('wtw-question-text');
+  const wtwVoteButtons      = document.getElementById('wtw-vote-buttons');
+  const wtwLiveResults      = document.getElementById('wtw-live-results');
+  const wtwLiveBars         = document.getElementById('wtw-live-bars');
+  const btnWtwSkipVoting    = document.getElementById('btn-wtw-skip-voting');
+
+  // Question results
+  const wtwRTimer           = document.getElementById('wtw-r-timer');
+  const wtwResultQuestionText = document.getElementById('wtw-result-question-text');
+  const wtwResultBars       = document.getElementById('wtw-result-bars');
+
+  // Final scores
+  const wtwFinalLeaderboard = document.getElementById('wtw-final-leaderboard');
+  const btnWtwPlayAgain     = document.getElementById('btn-wtw-play-again');
+  const wtwPlayAgainWait    = document.getElementById('wtw-play-again-wait');
+
+  // ── WTW Client State ────────────────────────────────────────────────────────
+  let wtwRoomId       = null;
+  let wtwMyName       = '';
+  let wtwMyId         = socket.id;
+  let wtwIsHost       = false;
+  let wtwRoomState    = null;
+  let wtwHasVoted     = false;
+  let wtwVotedForId   = null;
+  let wtwSubmittedQs  = 0; // how many questions this client has submitted this round
+
+  // ── Helper: show one screen ──────────────────────────────────────────────
+  function wtwShowScreen(screen) {
+    wtwAllScreens.forEach(s => s.classList.add('hidden'));
+    screen.classList.remove('hidden');
+  }
+
+  // ── Helper: render vote percentage bars ─────────────────────────────────
+  function wtwRenderBars(container, players, voteCounts) {
+    if (!voteCounts) { container.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">No votes yet.</p>'; return; }
+    const totalVotes = Object.values(voteCounts).reduce((a, b) => a + b, 0);
+    container.innerHTML = '';
+    // Sort by count desc
+    const sorted = [...players].sort((a, b) => (voteCounts[b.id] || 0) - (voteCounts[a.id] || 0));
+    sorted.forEach(p => {
+      const count = voteCounts[p.id] || 0;
+      const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+      const row = document.createElement('div');
+      row.className = 'wtw-bar-row';
+      row.innerHTML = `
+        <span class="wtw-bar-name" title="${p.name}">${p.name}</span>
+        <div class="wtw-bar-track"><div class="wtw-bar-fill" style="width:0%"></div></div>
+        <span class="wtw-bar-pct">${pct}%</span>
+      `;
+      container.appendChild(row);
+      // Animate after paint
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const fill = row.querySelector('.wtw-bar-fill');
+          if (fill) fill.style.width = pct + '%';
+        });
+      });
+    });
+  }
+
+  // ── Helper: render waiting lobby player list ─────────────────────────────
+  function wtwRenderLobbyPlayers(players) {
+    wtwLobbyPlayersList.innerHTML = '';
+    players.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'wtw-player-lobby-row' + (p.connected ? '' : ' disconnected');
+      row.innerHTML = `
+        <div class="wtw-avatar">${p.name.substring(0, 2).toUpperCase()}</div>
+        <span>${p.name}</span>
+        ${p.isHost ? '<span class="wtw-host-badge">HOST</span>' : ''}
+      `;
+      wtwLobbyPlayersList.appendChild(row);
+    });
+  }
+
+  // ── Helper: render question phase submission chips ───────────────────────
+  function wtwRenderQPlayerStatus(players) {
+    wtwQPlayersStatus.innerHTML = '';
+    players.forEach(p => {
+      const chip = document.createElement('div');
+      chip.className = 'wtw-status-chip' + (p.hasSubmittedQuestion ? ' done' : '');
+      chip.innerHTML = `
+        <i data-lucide="${p.hasSubmittedQuestion ? 'check' : 'clock'}"></i>
+        <span>${p.name}</span>
+      `;
+      wtwQPlayersStatus.appendChild(chip);
+    });
+    lucide.createIcons();
+  }
+
+  // ── Helper: render vote buttons ─────────────────────────────────────────
+  function wtwRenderVoteButtons(players) {
+    wtwVoteButtons.innerHTML = '';
+    players.forEach(p => {
+      if (p.id === socket.id) return; // no self-voting
+      const btn = document.createElement('button');
+      btn.className = 'wtw-vote-btn' + (wtwVotedForId === p.id ? ' voted' : '');
+      btn.dataset.pid = p.id;
+      btn.disabled = wtwHasVoted;
+      btn.innerHTML = `
+        <div class="wtw-vote-btn-avatar">${p.name.substring(0, 2).toUpperCase()}</div>
+        <span>${p.name}</span>
+      `;
+      btn.addEventListener('click', () => {
+        if (wtwHasVoted) return;
+        socket.emit('wtw-submit-vote', { voteeId: p.id }, (res) => {
+          if (res && res.error) {
+            showModalAlert(res.error, 'Vote Error', 'error');
+          } else {
+            wtwHasVoted = true;
+            wtwVotedForId = p.id;
+            wtwRenderVoteButtons(wtwRoomState ? wtwRoomState.players : []);
+          }
+        });
+      });
+      wtwVoteButtons.appendChild(btn);
+    });
+  }
+
+  // ── Helper: render final leaderboard ────────────────────────────────────
+  function wtwRenderLeaderboard(players) {
+    wtwFinalLeaderboard.innerHTML = '';
+    const ranked = [...players].sort((a, b) => b.score - a.score);
+    const medals = ['🥇', '🥈', '🥉'];
+    ranked.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'wtw-leaderboard-row';
+      row.innerHTML = `
+        <span class="wtw-rank">${medals[i] || `#${i + 1}`}</span>
+        <div class="wtw-lb-avatar">${p.name.substring(0, 2).toUpperCase()}</div>
+        <span class="wtw-lb-name">${p.name}</span>
+        <div>
+          <span class="wtw-lb-score">${p.score}</span>
+          <span class="wtw-lb-score-label">votes</span>
+        </div>
+      `;
+      wtwFinalLeaderboard.appendChild(row);
+    });
+  }
+
+  // ── Helper: update settings button active states ─────────────────────────
+  function wtwSyncSettingsUI(settings) {
+    document.querySelectorAll('#wtw-settings-controls .btn-setting').forEach(btn => {
+      const key = btn.dataset.setting;
+      const val = btn.dataset.value;
+      const cur = settings[key];
+      const matches = String(cur) === String(val);
+      btn.classList.toggle('active', matches);
+    });
+  }
+
+  // ── Phase transition handler ─────────────────────────────────────────────
+  function wtwHandlePhaseChange(data) {
+    const status = data.status;
+
+    if (status === 'QUESTION_PHASE') {
+      // Build question inputs dynamically
+      wtwSubmittedQs = 0;
+      wtwQInputsContainer.innerHTML = '';
+      const qpp = wtwRoomState ? wtwRoomState.settings.questionsPerPlayer : 1;
+      for (let i = 0; i < qpp; i++) {
+        const wrap = document.createElement('div');
+        wrap.className = 'wtw-q-input-wrap';
+        wrap.innerHTML = `
+          <span class="wtw-q-input-label">Question ${qpp > 1 ? i + 1 : ''}</span>
+          <input type="text" class="wtw-q-input" data-qi="${i}" placeholder="e.g. Who is most likely to forget someone's birthday?" maxlength="200" autocomplete="off" />
+        `;
+        wtwQInputsContainer.appendChild(wrap);
+      }
+      btnWtwSubmitQs.disabled = false;
+      btnWtwSubmitQs.querySelector('span').textContent = 'Submit';
+      wtwQSubmittedCount.textContent = '';
+      wtwShowScreen(wtwQuestionPhase);
+    }
+
+    else if (status === 'VOTING_PHASE') {
+      wtwHasVoted = false;
+      wtwVotedForId = null;
+      wtwShowScreen(wtwVotingPhase);
+
+      const qIdx = data.currentQuestionIndex || 0;
+      const total = wtwRoomState ? wtwRoomState.questions.length : 1;
+      wtwVoteQProgress.textContent = `Question ${qIdx + 1} of ${total}`;
+      wtwQuestionNumber.textContent = `Q${qIdx + 1}`;
+
+      if (data.currentQuestion) {
+        wtwQuestionText.textContent = data.currentQuestion.text;
+      } else if (wtwRoomState && wtwRoomState.questions[qIdx]) {
+        wtwQuestionText.textContent = wtwRoomState.questions[qIdx].text;
+      }
+
+      // Live results bar
+      const showLive = wtwRoomState && wtwRoomState.settings.showRealTimeResults;
+      if (showLive) {
+        wtwLiveResults.classList.remove('hidden');
+        wtwLiveBars.innerHTML = '';
+      } else {
+        wtwLiveResults.classList.add('hidden');
+      }
+
+      // Vote buttons
+      if (wtwRoomState) wtwRenderVoteButtons(wtwRoomState.players);
+
+      // Host skip button
+      btnWtwSkipVoting.style.display = wtwIsHost ? 'inline-flex' : 'none';
+    }
+
+    else if (status === 'QUESTION_RESULTS') {
+      wtwShowScreen(wtwQuestionResults);
+      const qIdx = data.currentQuestionIndex != null ? data.currentQuestionIndex : (wtwRoomState ? wtwRoomState.currentQuestionIndex : 0);
+      if (wtwRoomState && wtwRoomState.questions[qIdx]) {
+        wtwResultQuestionText.textContent = wtwRoomState.questions[qIdx].text;
+        wtwRenderBars(wtwResultBars, wtwRoomState.players, wtwRoomState.questions[qIdx].voteCounts);
+      }
+    }
+
+    else if (status === 'FINAL_SCORES') {
+      wtwShowScreen(wtwFinalScores);
+      if (wtwRoomState) wtwRenderLeaderboard(wtwRoomState.players);
+      if (wtwIsHost) {
+        btnWtwPlayAgain.style.display = 'inline-flex';
+        wtwPlayAgainWait.style.display = 'none';
+      } else {
+        btnWtwPlayAgain.style.display = 'none';
+        wtwPlayAgainWait.style.display = 'block';
+      }
+    }
+  }
+
+  // ── Timer helper ─────────────────────────────────────────────────────────
+  function wtwSetTimer(el, val) {
+    el.textContent = val;
+    el.classList.toggle('urgent', val <= 5 && val > 0);
+  }
+
+  // ── Reset to lobby setup ─────────────────────────────────────────────────
+  function wtwResetUI() {
+    wtwRoomId     = null;
+    wtwMyName     = '';
+    wtwIsHost     = false;
+    wtwRoomState  = null;
+    wtwHasVoted   = false;
+    wtwVotedForId = null;
+    wtwSubmittedQs= 0;
+    wtwShowScreen(wtwLobbySetup);
+  }
+
+  // ── Open game ────────────────────────────────────────────────────────────
+  document.querySelector('[data-game="wtw"]').addEventListener('click', () => {
+    gamesListView.classList.add('hidden');
+    wtwGameView.classList.remove('hidden');
+    wtwResetUI();
+    lucide.createIcons();
+  });
+
+  btnWtwBack.addEventListener('click', () => {
+    wtwGameView.classList.add('hidden');
+    gamesListView.classList.remove('hidden');
+    wtwResetUI();
+  });
+
+  // ── Create Room ──────────────────────────────────────────────────────────
+  btnWtwCreateRoom.addEventListener('click', async () => {
+    const name = wtwNameCreate.value.trim();
+    if (!name) { await showModalAlert('Please enter your name.', 'Name Required', 'warning'); return; }
+
+    btnWtwCreateRoom.disabled = true;
+    btnWtwCreateRoom.querySelector('span').textContent = 'Creating...';
+
+    socket.emit('wtw-create', { playerName: name }, (res) => {
+      btnWtwCreateRoom.disabled = false;
+      btnWtwCreateRoom.querySelector('span').textContent = 'Create Room';
+
+      if (res.error) { showModalAlert(res.error, 'Error', 'error'); return; }
+
+      wtwRoomId  = res.roomId;
+      wtwMyName  = name;
+      wtwIsHost  = true;
+      wtwMyId    = socket.id;
+      wtwRoomState = res.roomState;
+
+      wtwTransitionToWaiting(res.roomState);
+    });
+  });
+
+  // ── Join Room ────────────────────────────────────────────────────────────
+  btnWtwJoinRoom.addEventListener('click', async () => {
+    const name = wtwNameJoin.value.trim();
+    const code = wtwRoomCodeInput.value.trim().toUpperCase();
+    if (!name) { await showModalAlert('Please enter your name.', 'Name Required', 'warning'); return; }
+    if (!code || code.length !== 4) { await showModalAlert('Please enter a valid 4-letter room code.', 'Code Required', 'warning'); return; }
+
+    btnWtwJoinRoom.disabled = true;
+    btnWtwJoinRoom.querySelector('span').textContent = 'Joining...';
+
+    socket.emit('wtw-join', { roomId: code, playerName: name }, (res) => {
+      btnWtwJoinRoom.disabled = false;
+      btnWtwJoinRoom.querySelector('span').textContent = 'Join Room';
+
+      if (res.error) { showModalAlert(res.error, 'Error', 'error'); return; }
+
+      wtwRoomId  = code;
+      wtwMyName  = name;
+      wtwIsHost  = false;
+      wtwMyId    = socket.id;
+      wtwRoomState = res.roomState;
+
+      wtwTransitionToWaiting(res.roomState);
+    });
+  });
+
+  // ── Copy room code ───────────────────────────────────────────────────────
+  btnWtwCopyCode.addEventListener('click', () => {
+    navigator.clipboard.writeText(wtwRoomId || '').then(() => {
+      btnWtwCopyCode.innerHTML = '<i data-lucide="check"></i>';
+      lucide.createIcons();
+      setTimeout(() => {
+        btnWtwCopyCode.innerHTML = '<i data-lucide="copy"></i>';
+        lucide.createIcons();
+      }, 1500);
+    });
+  });
+
+  // ── Settings buttons (host only) ─────────────────────────────────────────
+  document.querySelectorAll('#wtw-settings-controls .btn-setting').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!wtwIsHost) return;
+      const setting = btn.dataset.setting;
+      let val = btn.dataset.value;
+      if (val === 'true') val = true;
+      else if (val === 'false') val = false;
+      else val = Number(val);
+
+      socket.emit('wtw-update-settings', { [setting]: val }, () => {});
+    });
+  });
+
+  // ── Start Game (host) ────────────────────────────────────────────────────
+  btnWtwStartGame.addEventListener('click', () => {
+    socket.emit('wtw-start-game', null, (res) => {
+      if (res && res.error) showModalAlert(res.error, 'Cannot Start', 'error');
+    });
+  });
+
+  // ── Submit Questions ─────────────────────────────────────────────────────
+  btnWtwSubmitQs.addEventListener('click', async () => {
+    const inputs = wtwQInputsContainer.querySelectorAll('.wtw-q-input:not(.submitted)');
+    const questions = [...inputs].map(i => i.value.trim()).filter(q => q.length > 0);
+
+    if (questions.length === 0) {
+      await showModalAlert('Please write at least one question before submitting.', 'Empty Question', 'warning');
+      return;
+    }
+
+    btnWtwSubmitQs.disabled = true;
+    btnWtwSubmitQs.querySelector('span').textContent = 'Submitting...';
+
+    // Submit questions one by one
+    let allOk = true;
+    for (const q of questions) {
+      await new Promise((resolve) => {
+        socket.emit('wtw-submit-question', { questionText: q }, (res) => {
+          if (res && res.error) { showModalAlert(res.error, 'Submit Error', 'error'); allOk = false; }
+          resolve();
+        });
+      });
+      if (!allOk) break;
+    }
+
+    if (allOk) {
+      // Mark inputs as submitted
+      inputs.forEach(input => { input.classList.add('submitted'); });
+      btnWtwSubmitQs.querySelector('span').textContent = 'Submitted ✓';
+      wtwQSubmittedCount.textContent = `Your questions submitted!`;
+    } else {
+      btnWtwSubmitQs.disabled = false;
+      btnWtwSubmitQs.querySelector('span').textContent = 'Submit';
+    }
+  });
+
+  // ── Skip Voting (host) ───────────────────────────────────────────────────
+  btnWtwSkipVoting.addEventListener('click', () => {
+    socket.emit('wtw-skip-voting', null, (res) => {
+      if (res && res.error) showModalAlert(res.error, 'Cannot Skip', 'error');
+    });
+  });
+
+  // ── Play Again (host) ────────────────────────────────────────────────────
+  btnWtwPlayAgain.addEventListener('click', () => {
+    socket.emit('wtw-next-round', null, (res) => {
+      if (res && res.error) showModalAlert(res.error, 'Cannot restart', 'error');
+    });
+  });
+
+  // ── Transition to Waiting Room ───────────────────────────────────────────
+  function wtwTransitionToWaiting(state) {
+    wtwRoomState = state;
+    wtwDisplayCode.textContent = state.roomId;
+    wtwShowScreen(wtwLobbyWaiting);
+    wtwUpdateWaitingUI(state);
+    lucide.createIcons();
+  }
+
+  function wtwUpdateWaitingUI(state) {
+    const connected = state.players.filter(p => p.connected);
+    wtwPlayerCount.textContent = `${connected.length} / 12`;
+    wtwRenderLobbyPlayers(state.players);
+
+    // Host vs guest UI
+    if (wtwIsHost) {
+      wtwSettingsControls.classList.remove('hidden');
+      wtwSettingsReadonly.classList.add('hidden');
+      btnWtwStartGame.style.display = 'block';
+      wtwWaitingForHost.style.display = 'none';
+      const canStart = connected.length >= 3;
+      btnWtwStartGame.disabled = !canStart;
+      wtwHostWarning.classList.toggle('hidden', canStart);
+    } else {
+      wtwSettingsControls.classList.add('hidden');
+      wtwSettingsReadonly.classList.remove('hidden');
+      btnWtwStartGame.style.display = 'none';
+      wtwWaitingForHost.style.display = 'block';
+    }
+
+    wtwSyncSettingsUI(state.settings);
+  }
+
+  // ── Socket: Room Updated ─────────────────────────────────────────────────
+  socket.on('wtw-room-updated', (state) => {
+    wtwRoomState = state;
+    // Sync host status (in case of host transfer)
+    wtwIsHost = (state.hostId === socket.id);
+
+    if (state.status === 'LOBBY') {
+      wtwUpdateWaitingUI(state);
+    } else if (state.status === 'QUESTION_PHASE') {
+      // Update submission chips
+      wtwRenderQPlayerStatus(state.players);
+      wtwQSubmittedCount.textContent = `${state.submittedQuestionsCount} / ${state.players.filter(p=>p.connected).length} submitted`;
+    } else if (state.status === 'VOTING_PHASE') {
+      // Update live bars if visible
+      if (wtwRoomState && wtwRoomState.settings.showRealTimeResults) {
+        const q = state.questions[state.currentQuestionIndex];
+        if (q && q.voteCounts) wtwRenderBars(wtwLiveBars, state.players, q.voteCounts);
+      }
+      // Re-render vote buttons to reflect any changes (e.g. reconnect)
+      wtwRenderVoteButtons(state.players);
+    } else if (state.status === 'QUESTION_RESULTS') {
+      // Bars might be updated here
+      const q = state.questions[state.currentQuestionIndex];
+      if (q && q.voteCounts) wtwRenderBars(wtwResultBars, state.players, q.voteCounts);
+    } else if (state.status === 'FINAL_SCORES') {
+      wtwRenderLeaderboard(state.players);
+    }
+    lucide.createIcons();
+  });
+
+  // ── Socket: Phase Changed ────────────────────────────────────────────────
+  socket.on('wtw-phase-changed', (data) => {
+    wtwHandlePhaseChange(data);
+    lucide.createIcons();
+  });
+
+  // ── Socket: Timer Update ─────────────────────────────────────────────────
+  socket.on('wtw-timer-update', (timeLeft) => {
+    const status = wtwRoomState ? wtwRoomState.status : '';
+    if (status === 'QUESTION_PHASE') wtwSetTimer(wtwQTimer, timeLeft);
+    else if (status === 'VOTING_PHASE') wtwSetTimer(wtwVTimer, timeLeft);
+    else if (status === 'QUESTION_RESULTS') wtwSetTimer(wtwRTimer, timeLeft);
+  });
+
+  // ── Socket: Live Vote Update ─────────────────────────────────────────────
+  socket.on('wtw-vote-update', (data) => {
+    if (!wtwRoomState) return;
+    if (wtwRoomState.settings.showRealTimeResults) {
+      wtwRenderBars(wtwLiveBars, wtwRoomState.players, data.voteCounts);
+    }
+  });
+
 });
 
