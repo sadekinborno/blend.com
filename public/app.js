@@ -446,6 +446,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Global Fetch Interceptor to handle Session Expiration
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const response = await originalFetch(...args);
+    if (response.status === 401) {
+      const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+      if (url && !url.includes('/api/auth/owner') && localStorage.getItem('nexus_mode') === 'owner') {
+        localStorage.removeItem('owner_token');
+        setAppMode('guest');
+        showModalAlert('Your admin session has expired or is invalid. Please log in again.', 'Session Expired', 'error');
+      }
+    }
+    return response;
+  };
+
   // (app mode initialized later in DOMContentLoaded to prevent TDZ error)
 
   // Toggle Mode Click Listener

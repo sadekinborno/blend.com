@@ -13,7 +13,7 @@ web_modules/
 
 # Local data & temp downloads
 temp/
-data/users.json
+data/
 
 # Logs
 logs
